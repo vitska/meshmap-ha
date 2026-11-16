@@ -1,0 +1,10 @@
+{
+  "domain": "meshmap_vector",
+  "name": "MeshMap Vector Tiles",
+  "version": "1.0.0",
+  "documentation": "https://github.com/vitska/meshmap-ha",
+  "issue_tracker": "https://github.com/vitska/meshmap-ha/issues",
+  "dependencies": ["http"],
+  "codeowners": ["@vitska"],
+  "requirements": []
+}

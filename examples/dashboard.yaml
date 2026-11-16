@@ -1,0 +1,10 @@
+title: Mesh & Home map
+views:
+  - type: panel
+    title: Map
+    path: map
+    icon: mdi:map
+    cards:
+      - type: custom:mesh-map-card
+        title: Mesh & Home map
+        height: calc(100vh - 64px)

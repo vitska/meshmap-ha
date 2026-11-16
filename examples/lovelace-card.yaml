@@ -1,0 +1,51 @@
+# Minimal card
+type: custom:mesh-map-card
+title: Mesh & Home map
+height: calc(100vh - 64px)
+
+# --- Everything below is optional -------------------------------------------
+
+# Only these entities
+# entities:
+#   - device_tracker.mm_a1b2c3
+#   - person.owner
+
+# Only these groups (mesh_network names, plus People / Phones)
+# groups:
+#   - Meshtastic
+#   - MeshCore
+#   - People
+#   - Phones
+
+# Initial view: either a zone, a centre + zoom, or explicit bounds
+# zone: zone.home
+# center: [54.68, 25.28]
+# zoom: 11
+# bounds: [[54.6, 25.2], [54.8, 25.4]]
+
+# Tile coverage per zoom (south, west / north, east), finest first.
+# The built-in defaults are for the author's area near Vilnius; replace them
+# with the areas you actually exported in docs/tiles.md.
+# tile_tiers:
+#   - zoom: 14
+#     bounds: [[54.7753, 23.7305], [55.0406, 24.082]]
+#   - zoom: 13
+#     bounds: [[54.3, 22.7], [55.5, 25.1]]
+#   - zoom: 9
+#     bounds: [[53.9, 20.9], [56.5, 27.0]]
+#   - zoom: 0
+#     bounds: [[52.4, 19.4], [58.6, 29.2]]
+
+# Glyph overrides (max 2 characters)
+# glyphs:
+#   device_tracker.mm_a1b2c3: "AB"
+#   person.owner: "O"
+
+# Shape overrides for individual entities / whole groups
+# shapes:
+#   device_tracker.mm_a1b2c3: pin
+# shape_defaults:
+#   Meshtastic: hexagon
+
+show_filter: true
+debug: false

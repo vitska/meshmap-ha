@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Map data (large, region specific)
+*.pmtiles
+tiles/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
