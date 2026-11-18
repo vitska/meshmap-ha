@@ -8,3 +8,4 @@ views:
       - type: custom:mesh-map-card
         title: Mesh & Home map
         height: calc(100vh - 64px)
+        history_hours: 1

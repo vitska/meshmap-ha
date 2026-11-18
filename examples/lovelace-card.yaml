@@ -3,6 +3,10 @@ type: custom:mesh-map-card
 title: Mesh & Home map
 height: calc(100vh - 64px)
 
+# Hours of history to load for the trails (1-168, default 1). The Tracks
+# selector in the card can still change it for the current session.
+# history_hours: 1
+
 # --- Everything below is optional -------------------------------------------
 
 # Only these entities

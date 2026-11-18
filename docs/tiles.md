@@ -98,11 +98,25 @@ curl -I http://homeassistant.local:8123/api/meshmap_vector/0/0/0
   not load.
 - Connection refused — HA itself is unreachable.
 
+The label assets use the same service. On the first request the integration fetches the font or
+sprite from the Protomaps CDN and caches it; after that it is served from
+`/config/www/meshmap/cache`:
+
+```bash
+curl -I \
+  "http://homeassistant.local:8123/api/meshmap_vector/fonts/Noto%20Sans%20Regular/0-255.pbf"
+curl -I http://homeassistant.local:8123/api/meshmap_vector/sprites/light.json
+```
+
+A `200` means city/street labels can render. A `502` means Home Assistant could not reach the
+CDN on that first fetch; the card then tries the CDN from the browser, and still shows the map
+without labels if neither path works.
+
 ## Notes
 
 - Tiles are static: after changing the basemap, re-run the export. No integration restart is
   needed.
-- The card's rich style also fetches fonts/sprites from `protomaps.github.io/basemaps-assets`.
-  If your installation is offline, the card falls back to a minimal built-in style.
+- The card's rich style needs fonts and sprites; the integration proxies and caches them under
+  `/config/www/meshmap/cache` (see step 4). Delete that directory to force a re-fetch.
 - `area.pmtiles` next to the card is **not** required by the current card; only the exported
   `tiles/` directory is served.

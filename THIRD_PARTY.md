@@ -12,5 +12,6 @@ Map data rendered by the basemap comes from [OpenStreetMap](https://www.openstre
 contributors and is subject to the ODbL. The tile style and tooling come from
 [Protomaps](https://protomaps.com/).
 
-Fonts and sprites for the rich style are fetched at runtime from
-`protomaps.github.io/basemaps-assets`; they are not bundled here.
+Fonts (Noto Sans, SIL OFL) and sprites for the rich style are fetched at runtime from
+`protomaps.github.io/basemaps-assets` and cached under `/config/www/meshmap/cache`; they are not
+bundled here.

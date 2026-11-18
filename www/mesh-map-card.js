@@ -1,6 +1,8 @@
 const VENDOR = '/local/meshmap/vendor';
 const PMTILES_URL = '/local/meshmap/area.pmtiles';
 const TILES_URL = '/api/meshmap_vector/{z}/{x}/{y}';
+const FONTS_URL = '/api/meshmap_vector/fonts';
+const SPRITES_URL = '/api/meshmap_vector/sprites';
 
 let libsPromise = null;
 let pmtilesPromise = null;
@@ -85,6 +87,26 @@ const TRACK_MIN_PER_DEVICE = 200;
 const LIVE_MAX_POINTS = 4000;
 const LIVE_JUMP_METERS = 5000;
 
+// History window: the card asks Home Assistant for this many hours of state
+// history on first load. Override with `history_hours:` in the card config;
+// the Tracks selector can still change it for the current session.
+const DEFAULT_HISTORY_HOURS = 1;
+const MAX_HISTORY_HOURS = 168;
+const HISTORY_CHOICES = [1, 6, 12, 24, 48, 72, 168];
+
+function normalizeHistoryHours(value) {
+  const hours = Math.round(Number(value));
+  if (!Number.isFinite(hours) || hours < 1) return DEFAULT_HISTORY_HOURS;
+  return Math.min(hours, MAX_HISTORY_HOURS);
+}
+
+function historyLabel(hours) {
+  if (hours === 48) return '2 days';
+  if (hours === 72) return '3 days';
+  if (hours === 168) return '7 days';
+  return `${hours} h`;
+}
+
 // Basemap extract bounds (south,west / north,east), finest zoom first.
 //  z14-15 : detailed local extract
 //  z13    : ~110 km around home
@@ -97,8 +119,8 @@ const TILE_TIERS = [
   { zoom: 0, bounds: [[52.4, 19.4], [58.6, 29.2]] },
 ];
 const DEFAULT_TILE_BOUNDS = TILE_TIERS[TILE_TIERS.length - 1].bounds;
-const GLYPHS_URL = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
-const SPRITE_URL = 'https://protomaps.github.io/basemaps-assets/sprites/v4/light';
+const CDN_GLYPHS_URL = 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
+const CDN_SPRITE_URL = 'https://protomaps.github.io/basemaps-assets/sprites/v4/light';
 const NETWORK_GLYPHS = {
   Meshtastic: 'M',
   MeshCore: 'C',
@@ -175,7 +197,9 @@ class MeshMapCard extends HTMLElement {
     this._tileErrors = 0;
     this._hidden = new Set();
     this._q = '';
-    this._hours = 12;
+    this._hours = DEFAULT_HISTORY_HOURS;
+    this._configHours = DEFAULT_HISTORY_HOURS;
+    this._assets = undefined;
     this._trailLayers = [];
     this._tracks = 0;
     this._live = new Map();
@@ -192,6 +216,36 @@ class MeshMapCard extends HTMLElement {
   setConfig(config) {
     this.config = config || {};
     this._hidden = this._loadHidden();
+    const hours = normalizeHistoryHours(this.config.history_hours);
+    if (hours !== this._configHours) {
+      this._configHours = hours;
+      this._hours = hours;
+      if (this._ready) {
+        this._syncHistorySelect();
+        this._clearTrails();
+        this._trailsAt = 0;
+        this._trailSig = '';
+        this._update();
+      }
+    }
+  }
+
+  _hoursOptions() {
+    const values = new Set(HISTORY_CHOICES);
+    values.add(this._hours);
+    return [...values]
+      .sort((a, b) => a - b)
+      .map(
+        (hours) =>
+          `<option value="${hours}"${hours === this._hours ? ' selected' : ''}>` +
+          `${historyLabel(hours)}</option>`,
+      )
+      .join('');
+  }
+
+  _syncHistorySelect() {
+    const select = this.shadowRoot?.getElementById?.('fHours');
+    if (select) select.value = String(this._hours);
   }
 
   _hiddenKey() {
@@ -439,7 +493,7 @@ class MeshMapCard extends HTMLElement {
       featureCount = -1;
     }
     el.textContent =
-      `v63 ${this._mode} z${this._map.getZoom().toFixed(1)} ` +
+      `v64 ${this._mode} z${this._map.getZoom().toFixed(1)} ` +
       `${center.lat.toFixed(3)},${center.lng.toFixed(3)} ` +
       `L${layerCount} F${featureCount} T${tilesLoaded} src${loaded} err${this._tileErrors} ` +
       `${size}`;
@@ -456,26 +510,34 @@ class MeshMapCard extends HTMLElement {
     }
   }
 
-  _localStyle(full = true) {
+  /**
+   * Protomaps' rich style carries the label layers (cities, streets, water,
+   * POIs). They need glyphs for text and a sprite for icons, so `labels` is
+   * only enabled when both assets were found; otherwise the same style is used
+   * without its symbol layers and the map still renders cleanly.
+   */
+  _localStyle({ full = true, labels = false, glyphs = null, sprite = null } = {}) {
     let layers = LOCAL_LAYERS;
     if (full) {
       try {
         if (window.basemaps && window.basemaps.layers && window.basemaps.LIGHT) {
           const rich = window.basemaps.layers('protomaps', window.basemaps.LIGHT, { lang: 'en' });
-          const dataLayers = Array.isArray(rich)
-            ? rich.filter((layer) => layer.type !== 'symbol')
+          const styled = Array.isArray(rich)
+            ? rich.filter((layer) => labels || layer.type !== 'symbol')
             : [];
-          if (dataLayers.length > 0) {
-            layers = dataLayers;
+          if (styled.length > 0) {
+            layers = styled;
           }
         }
       } catch (error) {
         console.warn('mesh-map: full basemap style failed, using minimal', error);
       }
     }
-    return {
+    const style = {
       version: 8,
-      glyphs: GLYPHS_URL,
+      // Device pins are symbol layers too, so glyphs are always needed even
+      // when the basemap's own label layers are disabled.
+      glyphs: glyphs || CDN_GLYPHS_URL,
       sources: {
         protomaps: {
           type: 'vector',
@@ -487,25 +549,61 @@ class MeshMapCard extends HTMLElement {
       },
       layers,
     };
+    if (labels && sprite) style.sprite = sprite;
+    return style;
   }
 
-  async _externalAssetsOk() {
-    const urls = [
-      GLYPHS_URL.replace('{fontstack}/{range}', 'Noto%20Sans%20Regular/0-255'),
-      `${SPRITE_URL}.json`,
-    ];
+  async _urlOk(url, timeout = 2500) {
     try {
-      const results = await Promise.all(
-        urls.map((url) =>
-          fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(5000) })
-            .then((response) => response.ok)
-            .catch(() => false),
-        ),
-      );
-      return results.every(Boolean);
-    } catch (error) {
+      const response = await fetch(url, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(timeout),
+      });
+      // HA views answer GET only; a 405 still proves the endpoint exists.
+      return response.ok || response.status === 405;
+    } catch {
       return false;
     }
+  }
+
+  /**
+   * Prefer the tile service's own glyph/sprite endpoints (same origin, cached
+   * by HA, no CDN dependency) and fall back to the Protomaps CDN for an older
+   * integration that only serves tiles.
+   */
+  async _chooseAssets() {
+    if (this._assets !== undefined) return this._assets;
+
+    const origin = location.origin;
+    const localGlyphs = `${origin}${FONTS_URL}/{fontstack}/{range}`;
+    const localSprite = `${origin}${SPRITES_URL}/light`;
+    const localFont = await this._urlOk(
+      `${origin}${FONTS_URL}/Noto%20Sans%20Regular/0-255.pbf`,
+    );
+
+    if (localFont) {
+      const localSpriteOk = await this._urlOk(`${localSprite}.json`);
+      const cdnSpriteOk = localSpriteOk ? false : await this._urlOk(`${CDN_SPRITE_URL}.json`);
+      this._assets = {
+        glyphs: localGlyphs,
+        sprite: localSpriteOk ? localSprite : cdnSpriteOk ? CDN_SPRITE_URL : null,
+      };
+      return this._assets;
+    }
+
+    const cdnFont = await this._urlOk(
+      CDN_GLYPHS_URL.replace('{fontstack}/{range}', 'Noto%20Sans%20Regular/0-255'),
+    );
+    if (cdnFont) {
+      const cdnSpriteOk = await this._urlOk(`${CDN_SPRITE_URL}.json`);
+      this._assets = {
+        glyphs: CDN_GLYPHS_URL,
+        sprite: cdnSpriteOk ? CDN_SPRITE_URL : null,
+      };
+    } else {
+      this._assets = null;
+    }
+    return this._assets;
   }
 
   async _ensure() {
@@ -594,14 +692,7 @@ class MeshMapCard extends HTMLElement {
           <input type="text" id="fQuery" placeholder="search name…">
           <div style="text-align:right"><button id="allOn">all</button><button id="allOff">none</button></div>
           <label class="hours">Tracks:
-            <select id="fHours">
-              <option value="1">1 h</option>
-              <option value="6">6 h</option>
-              <option value="12" selected>12 h</option>
-              <option value="24">24 h</option>
-              <option value="72">3 days</option>
-              <option value="168">7 days</option>
-            </select><span id="fSpin" class="spin" hidden></span>
+            <select id="fHours">${this._hoursOptions()}</select><span id="fSpin" class="spin" hidden></span>
           </label>
           <label class="item"><input type="checkbox" id="fHops" checked>hop links</label>
           <div id="list"></div>
@@ -612,14 +703,24 @@ class MeshMapCard extends HTMLElement {
       <div id="diag" class="diag${this.config.debug ? ' on' : ''}"></div>`;
     try {
       await loadLibs();
-      if (!(await this._localTilesAvailable())) {
-        throw new Error('local basemap missing (area.pmtiles)');
+      const [tilesAvailable, assets] = await Promise.all([
+        this._localTilesAvailable(),
+        this._chooseAssets(),
+      ]);
+      if (!tilesAvailable) {
+        throw new Error('local vector tiles missing (meshmap_vector)');
       }
       await loadPmtiles();
       const richStyle = Boolean(window.basemaps && window.basemaps.layers && window.basemaps.LIGHT);
-      const style = this._localStyle(richStyle);
+      const labels = richStyle && Boolean(assets && assets.glyphs);
+      const style = this._localStyle({
+        full: richStyle,
+        labels,
+        glyphs: assets?.glyphs,
+        sprite: assets?.sprite,
+      });
       this._mode = 'local';
-      this._setStatus(richStyle ? 'local' : 'local (minimal)');
+      this._setStatus(richStyle ? (labels ? 'local · labels' : 'local') : 'local (minimal)');
 
       const container = this.shadowRoot.getElementById('map');
       await this._waitForSize(container, 8000);
@@ -718,7 +819,7 @@ class MeshMapCard extends HTMLElement {
         if (!this._styleLoaded) {
           this._setStatus('local (fallback)');
           try {
-            this._map.setStyle(this._localStyle(false));
+            this._map.setStyle(this._localStyle({ full: false }));
           } catch (error) {
             console.warn('mesh-map: style fallback failed', error);
           }
@@ -797,7 +898,7 @@ class MeshMapCard extends HTMLElement {
     const hours = this.shadowRoot.getElementById('fHours');
     if (hours) {
       hours.addEventListener('change', () => {
-        this._hours = Number(hours.value) || 12;
+        this._hours = normalizeHistoryHours(hours.value);
         this._trailsAt = 0;
         this._clearTrails();
         this._setTracksLoading(true);
@@ -1555,7 +1656,7 @@ class MeshMapCard extends HTMLElement {
   async _loadTrails(entries) {
     const token = (this._trailToken += 1);
     this._setTracksLoading(true);
-    const hours = this._hours || 12;
+    const hours = this._hours || DEFAULT_HISTORY_HOURS;
     const start = new Date(Date.now() - hours * 3600 * 1000).toISOString();
     // HA caps /api/history/period at start + 24 h when end_time is omitted, so
     // a 3 day or 7 day range came back with old data only (or nothing at all).

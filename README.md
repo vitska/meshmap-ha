@@ -14,7 +14,8 @@ latitude/longitude — phones, people, cars, pets.
 
 - Mesh nodes, phones and people on one map, coloured and shaped per network
 - One- or two-character glyphs (network initial by default, per-entity overrides)
-- GPS trails from Home Assistant history: 1 h, 6 h, 12 h, 24 h, 3 days or 7 days
+- GPS trails from Home Assistant history: 1 h, 6 h, 12 h, 24 h, 2 days, 3 days or 7 days
+- City, street, water and POI labels when the tile service can serve its font/sprite assets
 - Neighbour and traceroute hop links with SNR
 - Search, per-entity show/hide, optional entity/group allow-lists
 - Keeps the last view and hidden state per card in `localStorage`
@@ -125,6 +126,7 @@ option is listed in [examples/lovelace-card.yaml](examples/lovelace-card.yaml).
 | `type` | — | `custom:mesh-map-card` |
 | `title` | `Show on map` | Panel title and filter summary |
 | `height` | `calc(100vh - 120px)` | CSS height of the map area |
+| `history_hours` | `1` | Hours of Home Assistant history to load for the trails (1–168) |
 | `entities` | all | Allow-list of `device_tracker` / `person` entity IDs |
 | `groups` | all | Allow-list of groups: `Meshtastic`, `MeshCore`, `Reticulum`, `MQTT`, `Phones`, `People` |
 | `zone` | — | Entity ID (e.g. `zone.home`) used to centre the initial view |
@@ -140,7 +142,8 @@ option is listed in [examples/lovelace-card.yaml](examples/lovelace-card.yaml).
 
 Shapes: `circle`, `square`, `triangle`, `diamond`, `star`, `hexagon`, `pin`.
 
-Trail length is chosen in the card's **Tracks** selector (default 12 h); it is not a YAML option.
+Trail length starts at `history_hours` (default **1 h**) and can be changed for the current
+session in the card's **Tracks** selector.
 
 ## Entities, groups and links
 
@@ -164,17 +167,22 @@ extent is clamped by `tile_tiers`.
 The default `tile_tiers` are for the author's area (Vilnius, Lithuania). Override them for your
 own region — see [examples/lovelace-card.yaml](examples/lovelace-card.yaml).
 
-Fonts and sprites for the rich basemap style are loaded from the Protomaps CDN
-(`protomaps.github.io/basemaps-assets`); if that is unavailable the card falls back to a smaller
-built-in style.
+The label layers (cities, streets, water, POIs) need MapLibre glyphs and a sprite sheet. The
+integration serves them from `/api/meshmap_vector/fonts/...` and `/api/meshmap_vector/sprites/...`,
+fetching each file from the Protomaps CDN once and caching it under
+`/config/www/meshmap/cache`. With the current integration the browser therefore talks only to
+Home Assistant, and labels keep working after the first view even if the CDN is unreachable. An
+older integration that only serves tiles is still supported: the card falls back to the CDN, and
+if that is unreachable too it draws the map without labels.
 
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 | --- | --- |
-| Map says *local basemap missing* | `meshmap_vector:` missing from `configuration.yaml`, integration not loaded, or `/config/www/meshmap/tiles` empty |
+| Map shows *local vector tiles missing* | `meshmap_vector:` missing from `configuration.yaml`, integration not loaded, or `/config/www/meshmap/tiles` empty |
 | Blank/empty map, no pins | Vendor files missing, or the resource URL/type is wrong |
 | Pins appear, no trails | The entities are excluded from Recorder history, or history was purged |
+| No city/street labels | The font/sprite proxy is unavailable and the browser cannot reach the Protomaps CDN; check `/api/meshmap_vector/fonts/Noto%20Sans%20Regular/0-255.pbf` |
 | Tiles 404 at high zoom | Your extract does not cover that area/zoom — regenerate tiles for it |
 | Hop links missing | Trackers lack `node_id` / `links` attributes |
 
