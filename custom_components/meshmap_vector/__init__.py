@@ -53,6 +53,17 @@ _SPRITE_EXT = {"json": "application/json", "png": "image/png"}
 _semaphore: asyncio.Semaphore | None = None
 
 
+def _read_bytes(path: str) -> bytes:
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
+def _write_bytes(path: str, data: bytes) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as handle:
+        handle.write(data)
+
+
 async def _cached_asset(
     hass: HomeAssistant,
     relative: tuple[str, ...],
@@ -64,8 +75,7 @@ async def _cached_asset(
     path = os.path.join(ASSET_DIR, *relative)
     if os.path.isfile(path):
         try:
-            with open(path, "rb") as handle:
-                data = handle.read()
+            data = await hass.async_add_executor_job(_read_bytes, path)
         except OSError as error:
             _LOGGER.debug("could not read cached asset %s: %s", path, error)
         else:
@@ -99,9 +109,7 @@ async def _cached_asset(
         return web.Response(status=502)
 
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as handle:
-            handle.write(data)
+        await hass.async_add_executor_job(_write_bytes, path, data)
     except OSError as error:
         # A read-only /config still works: serve the asset for this request.
         _LOGGER.debug("could not cache asset %s: %s", path, error)
