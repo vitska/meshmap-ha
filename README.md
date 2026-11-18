@@ -29,16 +29,19 @@ latitude/longitude — phones, people, cars, pets.
 ┌─────────────────────────────┐        ┌────────────────────────────────────┐
 │ mesh-map-card (Lovelace)    │        │ meshmap_vector (custom integration) │
 │ MapLibre GL + basemaps.js   │──GET──▶│ /api/meshmap_vector/{z}/{x}/{y}     │
-│ pins, trails, hop links     │        │ /config/www/meshmap/tiles/z/x/y.pbf │
-└─────────────────────────────┘        └────────────────────────────────────┘
-              │
+│ pins, trails, hop links     │        │ /api/meshmap_vector/fonts/...       │
+└─────────────────────────────┘        │ /api/meshmap_vector/sprites/...     │
+              │                        │ /config/www/meshmap/tiles|cache/... │
               └── reads hass.states (device_tracker.* / person.*)
 ```
 
-- `custom_components/meshmap_vector` registers the authenticated-free tile endpoint and serves
-  pre-generated `.pbf` tiles from `/config/www/meshmap/tiles`.
+- `custom_components/meshmap_vector` registers the authenticated-free tile, font and sprite
+  endpoints, serves pre-generated `.pbf` tiles from `/config/www/meshmap/tiles`, and caches the
+  label assets under `/config/www/meshmap/cache`.
 - `www/mesh-map-card.js` is a single-file Lovelace card (no build step). It loads MapLibre,
   PMTiles and Protomaps basemaps from `www/vendor/`.
+- The integration bundles that card and vendor tree under `custom_components/meshmap_vector/www`
+  and copies it to `/config/www/meshmap` on startup, so a HACS install is enough for both parts.
 - Vector tiles come from a [Protomaps](https://maps.protomaps.com/builds/) basemap extract; see
   [docs/tiles.md](docs/tiles.md).
 
@@ -77,7 +80,10 @@ HACS: add this repository as a custom **Integration** repository, install it, ad
 
 ### 2. The card and vendor libraries
 
-Copy these into `/config/www/` so that the paths below exist:
+If you installed the integration through HACS, this step is already done: the integration
+bundles the card and vendor files and copies them to `/config/www/meshmap` on startup.
+
+For a manual install, copy these into `/config/www/` so that the paths below exist:
 
 ```
 /config/www/meshmap/mesh-map-card.js
@@ -189,8 +195,9 @@ if that is unreachable too it draws the map without labels.
 ## Repository layout
 
 ```
-custom_components/meshmap_vector/   tile server integration
-www/mesh-map-card.js                Lovelace card (single file, no build)
+custom_components/meshmap_vector/   tile, font and sprite server integration
+custom_components/meshmap_vector/www/  card + vendor files copied on startup
+www/mesh-map-card.js                Lovelace card source (single file, no build)
 www/vendor/                         MapLibre GL, PMTiles, Protomaps basemaps
 examples/                           dashboard and card YAML
 scripts/extract_tiles.py            PMTiles → z/x/y.pbf exporter
